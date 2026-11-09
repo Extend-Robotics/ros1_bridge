@@ -102,6 +102,9 @@ public:
     ros::SubscribeOptions ops;
     ops.topic = topic_name;
     ops.queue_size = queue_size;
+    // Disable Nagle on the ROS1 hop: without it small control messages wait for the
+    // delayed ACK (~40 ms stalls). http://wiki.ros.org/roscpp/Overview/Publishers%20and%20Subscribers#Transport_Hints
+    ops.transport_hints = ros::TransportHints().tcpNoDelay();
     ops.md5sum = ros::message_traits::md5sum<ROS1_T>();
     ops.datatype = ros::message_traits::datatype<ROS1_T>();
     ops.helper = ros::SubscriptionCallbackHelperPtr(
