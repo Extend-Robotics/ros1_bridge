@@ -281,30 +281,53 @@ int main(int argc, char * argv[])
       if (!queue_size) {
         queue_size = 100;
       }
+      // Optional "direction": "1_to_2", "2_to_1" or "bidirectional" (the default). A one-way entry
+      // creates no endpoints for the other direction, so the bridge adds no publisher on a topic it
+      // only reads.
+      std::string direction = "bidirectional";
+      if (topics[i].hasMember("direction")) {
+        direction = static_cast<std::string>(topics[i]["direction"]);
+      }
+      if (direction != "bidirectional" && direction != "1_to_2" && direction != "2_to_1") {
+        fprintf(
+          stderr,
+          "Topic '%s' has direction '%s'; expected '1_to_2', '2_to_1' or 'bidirectional'\n",
+          topic_name.c_str(), direction.c_str());
+        return 1;
+      }
       printf(
-        "Trying to create bidirectional bridge for topic '%s' "
+        "Trying to create %s bridge for topic '%s' "
         "with ROS 2 type '%s'\n",
-        topic_name.c_str(), type_name.c_str());
+        direction.c_str(), topic_name.c_str(), type_name.c_str());
 
       try {
+        rclcpp::QoS ros2_qos = rclcpp::QoS(rclcpp::KeepLast(queue_size));
         if (topics[i].hasMember("qos")) {
           printf("Setting up QoS for '%s': ", topic_name.c_str());
-          auto qos_settings = qos_from_params(topics[i]["qos"]);
+          ros2_qos = qos_from_params(topics[i]["qos"]);
           printf("\n");
-          ros1_bridge::BridgeHandles handles = ros1_bridge::create_bidirectional_bridge(
-            ros1_node, ros2_node, "", type_name, topic_name, queue_size, qos_settings);
-          all_handles.push_back(handles);
-        } else {
-          ros1_bridge::BridgeHandles handles = ros1_bridge::create_bidirectional_bridge(
-            ros1_node, ros2_node, "", type_name, topic_name, queue_size);
-          all_handles.push_back(handles);
         }
+        ros1_bridge::BridgeHandles handles;
+        if (direction == "1_to_2") {
+          handles.bridge1to2 = ros1_bridge::create_bridge_from_1_to_2(
+            ros1_node, ros2_node, "", topic_name, queue_size, type_name, topic_name, ros2_qos);
+        } else if (direction == "2_to_1") {
+          handles.bridge2to1 = ros1_bridge::create_bridge_from_2_to_1(
+            ros2_node, ros1_node, type_name, topic_name, ros2_qos, "", topic_name, queue_size);
+        } else if (topics[i].hasMember("qos")) {
+          handles = ros1_bridge::create_bidirectional_bridge(
+            ros1_node, ros2_node, "", type_name, topic_name, queue_size, ros2_qos);
+        } else {
+          handles = ros1_bridge::create_bidirectional_bridge(
+            ros1_node, ros2_node, "", type_name, topic_name, queue_size);
+        }
+        all_handles.push_back(handles);
       } catch (std::runtime_error & e) {
         fprintf(
           stderr,
-          "failed to create bidirectional bridge for topic '%s' "
+          "failed to create %s bridge for topic '%s' "
           "with ROS 2 type '%s': %s\n",
-          topic_name.c_str(), type_name.c_str(), e.what());
+          direction.c_str(), topic_name.c_str(), type_name.c_str(), e.what());
       }
     }
   } else {
